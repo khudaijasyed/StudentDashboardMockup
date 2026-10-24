@@ -235,6 +235,24 @@ label.lbl{display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)
 .ev button{color:inherit;font-weight:700;font-size:12px;opacity:.8}
 .hint{padding:0 20px 20px;font-size:12px;color:var(--muted)}
 
+/* ask gemma */
+.chat{display:flex;flex-direction:column;min-height:560px}
+.chat-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.chat-bar small{color:var(--muted);font-size:12px}
+.msgs{flex:1;display:flex;flex-direction:column;gap:12px;padding:20px;min-height:320px;max-height:60vh;overflow-y:auto}
+.msg{max-width:min(640px,92%);border-radius:16px;padding:12px 16px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.msg.user{align-self:flex-end;background:var(--blue);color:#fff}
+.msg.model{align-self:flex-start;background:var(--soft)}
+.msg.err{align-self:flex-start;background:transparent;border:1px solid #c0392b;color:#c0392b}
+:root[data-theme="dark"] .msg.err{border-color:#ff8f80;color:#ff8f80}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .msg.err{border-color:#ff8f80;color:#ff8f80}}
+.chat-form{display:grid;gap:10px;padding:16px 20px;border-top:1px solid var(--line)}
+.chat-form .row{display:flex;gap:10px;align-items:flex-end}
+.chat-form textarea{flex:1;min-width:0}
+.ctx{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.keybox{display:grid;gap:14px;padding:24px;max-width:560px}
+.keybox p{color:var(--muted)}
+
 .foot{margin-top:28px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
 .foot button{font-size:12px;font-weight:700;text-decoration:underline}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:999px;padding:12px 20px;font-weight:700;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:50;max-width:calc(100vw - 32px);text-align:center}
@@ -256,7 +274,7 @@ label.lbl{display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)
 (function(){
 var KEY='student-space-v1', mem=null;
 var NAME='Amelia Foster', FIRST='Amelia', COURSE='Business Management';
-var TABS=[['outlook','Outlook'],['notes','Notes'],['surreylearn','SurreyLearn'],['timetable','Timetable']];
+var TABS=[['outlook','Outlook'],['notes','Notes'],['surreylearn','SurreyLearn'],['timetable','Timetable'],['assistant','Ask Gemma']];
 var INBOX=[
  {id:'m1',sender:'Dr. Sarah Collins',subject:'Campaign feedback',preview:'I’ve added comments to your first draft…',initials:'SC',time:'09:12',body:'Hi Amelia,\n\nI’ve reviewed your campaign analysis draft. Your audience insight is strong. Please add a little more evidence to support the channel recommendations before Friday.\n\nBest,\nSarah'},
  {id:'m2',sender:'SurreyLearn',subject:'New assignment posted',preview:'The research proposal brief is now live.',initials:'SL',time:'Yesterday',body:'A new assignment has been posted for Business Research Methods. Open SurreyLearn to review the brief and submission requirements.'},
@@ -272,6 +290,7 @@ var ICON={
  notes:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/></svg>',
  surreylearn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5z"/><path d="M7 11v5c0 1.5 2.5 3 5 3s5-1.500 5-3v-5"/></svg>',
  timetable:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
+ assistant:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.500-3.500"/></svg>'
 };
 
@@ -336,6 +355,48 @@ var noteFolder='All', showDl=false, showEv=false, evError='', weekOffset=0;
 var stickyMin=false, stickyPos={x:0,y:0}, doneIdx={};
 if(!state.selNote&&state.notes[0])state.selNote=state.notes[0].id;
 
+/* ---------- ask gemma (key lives only in this browser) ---------- */
+var GKEY='student-space-gemma', gmem=null, chat=[], gBusy=false, useCtx=false;
+function gcfg(){try{var r=localStorage.getItem(GKEY);if(r){var c=JSON.parse(r);if(c&&c.key)return c}}catch(e){}return gmem}
+function gsetCfg(c){gmem=c;try{if(c)localStorage.setItem(GKEY,JSON.stringify(c));else localStorage.removeItem(GKEY)}catch(e){}}
+function msgHtml(m){return '<div class="msg '+(m.err?'err':m.role)+'">'+esc(m.text)+'</div>'}
+function viewAssistant(){
+  var c=gcfg();
+  if(!c)return '<section class="panel"><form class="keybox" data-form="gkey"><h2>Connect Gemma</h2>'+
+    '<p>Paste a Gemini API key to chat with a Gemma model about your studies. The key is saved only in this browser and is sent only to Google’s API. It is not part of this site’s code, so anyone using this page adds their own.</p>'+
+    '<label class="lbl" for="g-key">API key<input class="field" id="g-key" name="key" type="password" autocomplete="off" required></label>'+
+    '<label class="lbl" for="g-model">Model<input class="field" id="g-model" name="model" value="gemma-3-27b-it" required></label>'+
+    '<div><button class="btn btn-blue" type="submit">Save key</button></div></form></section>';
+  return '<section class="panel chat"><div class="chat-bar"><div><b>Study helper</b><br><small>Model: '+esc(c.model)+'</small></div><div class="tt-nav"><button class="btn btn-line" data-act="gnew">New chat</button><button class="btn btn-line" data-act="gclear">Remove key</button></div></div>'+
+    '<div class="msgs" id="g-msgs" aria-live="polite">'+(chat.length?chat.map(msgHtml).join(''):'<p class="empty">Ask about a topic, a deadline plan or your notes.</p>')+'</div>'+
+    '<form class="chat-form" data-form="gask"><label class="ctx" for="g-ctx"><input type="checkbox" id="g-ctx"'+(useCtx?' checked':'')+'> Share my deadlines and notes with Gemma for this question</label>'+
+    '<div class="row"><textarea class="field" id="g-input" name="q" rows="2" required maxlength="4000" placeholder="Ask Gemma…" aria-label="Your question"></textarea><button class="btn btn-blue" type="submit" id="g-send">Send</button></div></form></section>';
+}
+function gContext(){
+  var d=state.deadlines.map(function(x){return '- '+x.title+' ('+x.module+'), due '+x.due+', '+x.progress+'% done'}).join('\n');
+  var n=state.notes.map(function(x){return '### '+x.title+'\n'+x.body}).join('\n\n');
+  return 'My deadlines:\n'+d+'\n\nMy notes:\n'+n;
+}
+function gAsk(q){
+  var cfg=gcfg();if(!cfg||gBusy)return;
+  chat.push({role:'user',text:q});gBusy=true;
+  var box=$('#g-msgs');if(box){var e=box.querySelector('.empty');if(e)e.remove();box.insertAdjacentHTML('beforeend',msgHtml(chat[chat.length-1])+'<div class="msg model" id="g-wait">Thinking…</div>');box.scrollTop=box.scrollHeight}
+  var send=$('#g-send');if(send)send.disabled=true;
+  var pre='You are a friendly study helper for a first-year university student. Keep answers clear and concise.\n\n'+(useCtx?gContext()+'\n\n':'');
+  var contents=chat.filter(function(m){return !m.err}).map(function(m,i){return {role:m.role==='user'?'user':'model',parts:[{text:(i===0?pre:'')+m.text}]}});
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(cfg.model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':cfg.key},body:JSON.stringify({contents:contents})})
+  .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+  .then(function(o){
+    if(!o.ok)throw new Error((o.j&&o.j.error&&o.j.error.message)||'Request failed');
+    var parts=(o.j.candidates&&o.j.candidates[0]&&o.j.candidates[0].content&&o.j.candidates[0].content.parts)||[];
+    var t=parts.map(function(p){return p.text||''}).join('').trim();
+    if(!t)throw new Error('Gemma returned no text. Try rephrasing your question.');
+    chat.push({role:'model',text:t});
+  })
+  .catch(function(e){chat.push({role:'model',err:true,text:'Could not get an answer: '+(e&&e.message?e.message:'network error')+'. Check the key and model name.'})})
+  .then(function(){gBusy=false;if(tab==='assistant'){var b=$('#g-msgs');if(b){b.innerHTML=chat.map(msgHtml).join('');b.scrollTop=b.scrollHeight}var s=$('#g-send');if(s)s.disabled=false}});
+}
+
 /* ---------- rendering ---------- */
 function titleFor(){
   if(tab==='surreylearn'){var h=new Date().getHours();return (h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', '+FIRST+'.'}
@@ -357,6 +418,7 @@ function render(){
   if(tab==='outlook')h+=viewOutlook();
   else if(tab==='notes')h+=viewNotes();
   else if(tab==='surreylearn')h+=viewSurrey();
+  else if(tab==='assistant')h+=viewAssistant();
   else h+=viewTimetable();
   h+='<div class="foot"><span>Sample data to start with. Your changes stay in this browser.</span><button data-act="reset">Reset sample data</button></div>';
   $('#main').innerHTML=h;
@@ -517,6 +579,8 @@ document.addEventListener('click',function(ev){
   if(a==='stask'){
     var i=+el.getAttribute('data-i');doneIdx[i]=true;var lab=el.closest('.task');if(lab)lab.classList.add('done');
     setTimeout(function(){var t=stickyTasks();t.splice(i,1);state.sticky=t.join('\n');doneIdx={};persist();var s=$('#sticky');if(s)s.innerHTML=stickyHtml()},650);return}
+  if(a==='gnew'){chat=[];return render()}
+  if(a==='gclear'){gsetCfg(null);chat=[];return render()}
   /* timetable */
   if(a==='wk'){var d=+el.getAttribute('data-d');weekOffset=d===0?0:weekOffset+d;return render()}
   if(a==='evform'){showEv=!showEv;evError='';return render()}
@@ -527,6 +591,8 @@ document.addEventListener('submit',function(ev){
   var f=ev.target.closest('[data-form]');if(!f)return;ev.preventDefault();
   var kind=f.getAttribute('data-form'), fd=new FormData(f);
   function v(k,max){return String(fd.get(k)||'').trim().slice(0,max)}
+  if(kind==='gkey'){var k=v('key',300),mo=v('model',80);if(!k||!mo)return;gsetCfg({key:k,model:mo});render();return toast('Key saved in this browser')}
+  if(kind==='gask'){var q=v('q',4000);if(!q)return;useCtx=!!(f.querySelector('#g-ctx')&&f.querySelector('#g-ctx').checked);f.reset();var cb=f.querySelector('#g-ctx');if(cb)cb.checked=useCtx;return gAsk(q)}
   if(kind==='send'){
     var to=v('to',200),sub=v('subject',200),body=v('body',5000);if(!to||!sub||!body)return;
     state.sent.unshift({id:uid(),to:to,subject:sub,body:body,time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})});
