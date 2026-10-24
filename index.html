@@ -253,6 +253,15 @@ label.lbl{display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)
 .keybox{display:grid;gap:14px;padding:24px;max-width:560px}
 .keybox p{color:var(--muted)}
 
+.quick{display:grid;gap:12px;padding:16px 20px 4px;grid-template-columns:1fr}
+@media (min-width:800px){.quick{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.qcard{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:16px;padding:16px;background:var(--soft)}
+.qcard p{font-size:12px;color:var(--muted);flex:1}
+.qcard .lbl{flex:1}
+.macts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;white-space:normal}
+.macts .btn{padding:6px 12px;font-size:12px;background:var(--surface);color:var(--ink)}
+.quick+.hint{padding-left:20px}
+
 .foot{margin-top:28px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
 .foot button{font-size:12px;font-weight:700;text-decoration:underline}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:999px;padding:12px 20px;font-weight:700;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:50;max-width:calc(100vw - 32px);text-align:center}
@@ -359,31 +368,47 @@ if(!state.selNote&&state.notes[0])state.selNote=state.notes[0].id;
 var GKEY='student-space-gemma', gmem=null, chat=[], gBusy=false, useCtx=false;
 function gcfg(){try{var r=localStorage.getItem(GKEY);if(r){var c=JSON.parse(r);if(c&&c.key)return c}}catch(e){}return gmem}
 function gsetCfg(c){gmem=c;try{if(c)localStorage.setItem(GKEY,JSON.stringify(c));else localStorage.removeItem(GKEY)}catch(e){}}
-function msgHtml(m){return '<div class="msg '+(m.err?'err':m.role)+'">'+esc(m.text)+'</div>'}
+function clean(t){return String(t).replace(/\*\*/g,'').replace(/^#+\s*/gm,'').replace(/`/g,'')}
+function msgHtml(m,i){
+  var acts=(m.role==='model'&&!m.err)?'<div class="macts"><button class="btn btn-line" data-act="msticky" data-i="'+i+'">Add to sticky note</button><button class="btn btn-line" data-act="mnote" data-i="'+i+'">Save as note</button></div>':'';
+  return '<div class="msg '+(m.err?'err':m.role)+'">'+esc(m.text)+acts+'</div>';
+}
 function viewAssistant(){
   var c=gcfg();
   if(!c)return '<section class="panel"><form class="keybox" data-form="gkey"><h2>Connect Gemma</h2>'+
-    '<p>Paste a Gemini API key to chat with a Gemma model about your studies. The key is saved only in this browser and is sent only to Google’s API. It is not part of this site’s code, so anyone using this page adds their own.</p>'+
+    '<p>Paste a Gemini API key to turn on your study assistant. It can write to-do lists and study notes and summarise your notes. The key is saved only in this browser and is sent only to Google\u2019s API. It is not part of this site\u2019s code, so anyone using this page adds their own.</p>'+
     '<label class="lbl" for="g-key">API key<input class="field" id="g-key" name="key" type="password" autocomplete="off" required></label>'+
     '<label class="lbl" for="g-model">Model<input class="field" id="g-model" name="model" value="gemma-3-27b-it" required></label>'+
     '<div><button class="btn btn-blue" type="submit">Save key</button></div></form></section>';
-  return '<section class="panel chat"><div class="chat-bar"><div><b>Study helper</b><br><small>Model: '+esc(c.model)+'</small></div><div class="tt-nav"><button class="btn btn-line" data-act="gnew">New chat</button><button class="btn btn-line" data-act="gclear">Remove key</button></div></div>'+
-    '<div class="msgs" id="g-msgs" aria-live="polite">'+(chat.length?chat.map(msgHtml).join(''):'<p class="empty">Ask about a topic, a deadline plan or your notes.</p>')+'</div>'+
+  var opts=state.notes.map(function(n){return '<option value="'+esc(n.id)+'">'+esc(n.title||'Untitled note')+'</option>'}).join('');
+  var quick='<div class="quick">'+
+    '<div class="qcard"><b>To-do list</b><p>Turns your deadlines into a short task list.</p><button class="btn btn-yellow" data-act="gtodo"'+(state.deadlines.length?'':' disabled')+'>Generate to-do list</button></div>'+
+    '<form class="qcard" data-form="gnotes"><b>Study notes</b><label class="lbl" for="g-topic">Topic<input class="field" id="g-topic" name="topic" required maxlength="150" placeholder="e.g. Market segmentation"></label><button class="btn btn-navy" type="submit">Generate notes</button></form>'+
+    '<form class="qcard" data-form="gsum"><b>Summarise a note</b><label class="lbl" for="g-notesel">Note<select class="field" id="g-notesel" name="note">'+opts+'</select></label><button class="btn btn-navy" type="submit"'+(state.notes.length?'':' disabled')+'>Summarise</button></form></div>'+
+    '<p class="hint" style="padding-top:0">These buttons send the deadlines or note they use to Google\u2019s Gemma API.</p>';
+  return '<section class="panel chat"><div class="chat-bar"><div><b>Study assistant</b><br><small>Model: '+esc(c.model)+'</small></div><div class="tt-nav"><button class="btn btn-line" data-act="gnew">New chat</button><button class="btn btn-line" data-act="gclear">Remove key</button></div></div>'+
+    quick+
+    '<div class="msgs" id="g-msgs" aria-live="polite">'+(chat.length?chat.map(msgHtml).join(''):'<p class="empty">Use a quick action above, or ask anything about your studies.</p>')+'</div>'+
     '<form class="chat-form" data-form="gask"><label class="ctx" for="g-ctx"><input type="checkbox" id="g-ctx"'+(useCtx?' checked':'')+'> Share my deadlines and notes with Gemma for this question</label>'+
-    '<div class="row"><textarea class="field" id="g-input" name="q" rows="2" required maxlength="4000" placeholder="Ask Gemma…" aria-label="Your question"></textarea><button class="btn btn-blue" type="submit" id="g-send">Send</button></div></form></section>';
+    '<div class="row"><textarea class="field" id="g-input" name="q" rows="2" required maxlength="4000" placeholder="Ask Gemma\u2026" aria-label="Your question"></textarea><button class="btn btn-blue" type="submit" id="g-send">Send</button></div></form></section>';
 }
 function gContext(){
   var d=state.deadlines.map(function(x){return '- '+x.title+' ('+x.module+'), due '+x.due+', '+x.progress+'% done'}).join('\n');
   var n=state.notes.map(function(x){return '### '+x.title+'\n'+x.body}).join('\n\n');
   return 'My deadlines:\n'+d+'\n\nMy notes:\n'+n;
 }
-function gAsk(q){
+function gDeadlines(){
+  var t=ymd(new Date());
+  return 'Today is '+t+'.\nMy deadlines:\n'+state.deadlines.slice().sort(function(a,b){return a.due<b.due?-1:1}).map(function(x){return '- '+x.title+' ('+x.module+'), due '+x.due+', '+x.progress+'% done'}).join('\n');
+}
+/* display = what the chat shows; prompt = what is sent */
+function gAsk(display,prompt){
   var cfg=gcfg();if(!cfg||gBusy)return;
-  chat.push({role:'user',text:q});gBusy=true;
-  var box=$('#g-msgs');if(box){var e=box.querySelector('.empty');if(e)e.remove();box.insertAdjacentHTML('beforeend',msgHtml(chat[chat.length-1])+'<div class="msg model" id="g-wait">Thinking…</div>');box.scrollTop=box.scrollHeight}
+  chat.push({role:'user',text:display,prompt:prompt});gBusy=true;
+  var box=$('#g-msgs');if(box){var e=box.querySelector('.empty');if(e)e.remove();box.insertAdjacentHTML('beforeend',msgHtml(chat[chat.length-1],chat.length-1)+'<div class="msg model" id="g-wait">Thinking\u2026</div>');box.scrollTop=box.scrollHeight}
   var send=$('#g-send');if(send)send.disabled=true;
-  var pre='You are a friendly study helper for a first-year university student. Keep answers clear and concise.\n\n'+(useCtx?gContext()+'\n\n':'');
-  var contents=chat.filter(function(m){return !m.err}).map(function(m,i){return {role:m.role==='user'?'user':'model',parts:[{text:(i===0?pre:'')+m.text}]}});
+  var pre='You are a friendly study helper for a first-year university student. Keep answers clear and concise.\n\n';
+  var contents=chat.filter(function(m){return !m.err}).map(function(m,i){return {role:m.role==='user'?'user':'model',parts:[{text:(i===0?pre:'')+(m.prompt||m.text)}]}});
   fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(cfg.model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':cfg.key},body:JSON.stringify({contents:contents})})
   .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
   .then(function(o){
@@ -391,10 +416,15 @@ function gAsk(q){
     var parts=(o.j.candidates&&o.j.candidates[0]&&o.j.candidates[0].content&&o.j.candidates[0].content.parts)||[];
     var t=parts.map(function(p){return p.text||''}).join('').trim();
     if(!t)throw new Error('Gemma returned no text. Try rephrasing your question.');
-    chat.push({role:'model',text:t});
+    chat.push({role:'model',text:clean(t),title:display});
   })
   .catch(function(e){chat.push({role:'model',err:true,text:'Could not get an answer: '+(e&&e.message?e.message:'network error')+'. Check the key and model name.'})})
   .then(function(){gBusy=false;if(tab==='assistant'){var b=$('#g-msgs');if(b){b.innerHTML=chat.map(msgHtml).join('');b.scrollTop=b.scrollHeight}var s=$('#g-send');if(s)s.disabled=false}});
+}
+function listItems(text){
+  var out=[];
+  String(text).split('\n').forEach(function(l){var m=l.trim().match(/^(?:[-*\u2022\u25A1\u2610]|\d+[.)])\s+(.+)$/);if(m){var t=m[1].replace(/^\[.?\]\s*/,'').trim();if(t)out.push(t.slice(0,200))}});
+  return out.slice(0,15);
 }
 
 /* ---------- rendering ---------- */
@@ -580,6 +610,9 @@ document.addEventListener('click',function(ev){
     var i=+el.getAttribute('data-i');doneIdx[i]=true;var lab=el.closest('.task');if(lab)lab.classList.add('done');
     setTimeout(function(){var t=stickyTasks();t.splice(i,1);state.sticky=t.join('\n');doneIdx={};persist();var s=$('#sticky');if(s)s.innerHTML=stickyHtml()},650);return}
   if(a==='gnew'){chat=[];return render()}
+  if(a==='gtodo'){return gAsk('Generate a to-do list from my deadlines',gDeadlines()+'\n\nWrite a practical to-do list for the next few days to help me stay on track. Reply with ONLY lines that start with "- ", at most 8 items, each under 12 words. Put the most urgent first.')}
+  if(a==='msticky'){var mm=chat[+el.getAttribute('data-i')];var items=mm?listItems(mm.text):[];if(!items.length)return toast('No list items found in that reply');var cur=stickyTasks();state.sticky=cur.concat(items).join('\n');persist();return toast('Added '+items.length+' task'+(items.length===1?'':'s')+' to your sticky note')}
+  if(a==='mnote'){var m2=chat[+el.getAttribute('data-i')];if(!m2)return;var title=clean(m2.title||m2.text.split('\n')[0]).replace(/^(Generate|Write|Make)\s+/i,'').slice(0,80)||'Gemma notes';var nn={id:uid(),title:title,body:m2.text,folder:state.folders[0]||'My notes',updated:Date.now()};state.notes.unshift(nn);persist();return toast('Saved to your notes as \u201C'+title+'\u201D')}
   if(a==='gclear'){gsetCfg(null);chat=[];return render()}
   /* timetable */
   if(a==='wk'){var d=+el.getAttribute('data-d');weekOffset=d===0?0:weekOffset+d;return render()}
@@ -592,7 +625,9 @@ document.addEventListener('submit',function(ev){
   var kind=f.getAttribute('data-form'), fd=new FormData(f);
   function v(k,max){return String(fd.get(k)||'').trim().slice(0,max)}
   if(kind==='gkey'){var k=v('key',300),mo=v('model',80);if(!k||!mo)return;gsetCfg({key:k,model:mo});render();return toast('Key saved in this browser')}
-  if(kind==='gask'){var q=v('q',4000);if(!q)return;useCtx=!!(f.querySelector('#g-ctx')&&f.querySelector('#g-ctx').checked);f.reset();var cb=f.querySelector('#g-ctx');if(cb)cb.checked=useCtx;return gAsk(q)}
+  if(kind==='gask'){var q=v('q',4000);if(!q)return;useCtx=!!(f.querySelector('#g-ctx')&&f.querySelector('#g-ctx').checked);f.reset();var cb=f.querySelector('#g-ctx');if(cb)cb.checked=useCtx;return gAsk(q,(useCtx?gContext()+'\n\n':'')+q)}
+  if(kind==='gnotes'){var tp=v('topic',150);if(!tp)return;return gAsk('Generate study notes on '+tp,'Write concise study notes for a first-year university student on: '+tp+'.\nUse short headings (plain text, no # or ** symbols) and bullet lines starting with "- ". Cover key ideas, one worked example and three questions to test myself. Keep it under 300 words.')}
+  if(kind==='gsum'){var nt=state.notes.filter(function(x){return x.id===String(fd.get('note'))})[0];if(!nt)return;if(!(nt.body||'').trim())return toast('That note is empty');return gAsk('Summarise my note \u201C'+(nt.title||'Untitled')+'\u201D','Summarise the note below into the key points I should remember, as bullet lines starting with "- ". Plain text, no # or ** symbols.\n\nTitle: '+nt.title+'\n'+nt.body)}
   if(kind==='send'){
     var to=v('to',200),sub=v('subject',200),body=v('body',5000);if(!to||!sub||!body)return;
     state.sent.unshift({id:uid(),to:to,subject:sub,body:body,time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})});
